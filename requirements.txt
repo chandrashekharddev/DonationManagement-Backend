@@ -8,15 +8,18 @@ anyio>=3.7.1,<4.0.0
 email-validator==2.1.0
 typing-extensions==4.8.0
 
-# Supabase - Use specific compatible versions
+# Supabase - USING ACTUAL AVAILABLE VERSIONS
 supabase==2.0.3
-postgrest==0.10.0
-gotrue==1.0.2
-realtime==1.0.0
-storage3==0.6.0
+postgrest==0.16.11  # Latest stable version
+gotrue==2.4.0       # Compatible with supabase==2.0.3
+realtime==2.0.0     # Compatible version
+storage3==0.7.7     # Compatible version
 httpx>=0.24.1,<0.25.0
 
 # Authentication
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 python-dotenv==1.0.0
+
+# Optional: Database driver for direct connection
+psycopg2-binary==2.9.9
