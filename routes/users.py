@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from typing import List, Any
+from typing import List
 from schemas import UserResponse, DonationResponse, CampaignResponse, NotificationResponse, DashboardStats
 from auth import get_current_user
 from database import supabase
@@ -19,66 +19,39 @@ async def get_dashboard_stats(user: dict = Depends(get_current_user)):
     try:
         print(f"Fetching dashboard for user: {user['username']} with role: {user['role']}")
         
-        stats = {}
+        # Get global stats for all roles
+        users_result = supabase.table("users").select("*", count="exact").execute()
+        ngos_result = supabase.table("users").select("*", count="exact").eq("role", "ngo").execute()
+        campaigns_result = supabase.table("campaigns").select("*", count="exact").execute()
+        
+        total_users = users_result.count if hasattr(users_result, 'count') else len(users_result.data)
+        total_ngos = ngos_result.count if hasattr(ngos_result, 'count') else len(ngos_result.data)
+        total_campaigns = campaigns_result.count if hasattr(campaigns_result, 'count') else len(campaigns_result.data)
+        active_campaigns = len([c for c in campaigns_result.data if c.get("status") == "active"]) if campaigns_result.data else 0
+        
+        # Get total donations based on role
+        total_donations = 0.0
         
         if user["role"] == "admin":
-            # Admin stats
-            users_result = supabase.table("users").select("*", count="exact").execute()
-            ngos_result = supabase.table("users").select("*", count="exact").eq("role", "ngo").execute()
-            campaigns_result = supabase.table("campaigns").select("*", count="exact").execute()
+            # Admin sees all donations
             donations_result = supabase.table("donations").select("amount").execute()
+            total_donations = sum(float(d["amount"]) for d in donations_result.data) if donations_result.data else 0.0
             
-            total_donations = sum(float(d["amount"]) for d in donations_result.data) if donations_result.data else 0
-            active_campaigns = len([c for c in campaigns_result.data if c.get("status") == "active"]) if campaigns_result.data else 0
-            
-            stats = {
-                "total_users": users_result.count if hasattr(users_result, 'count') else len(users_result.data),
-                "total_ngos": ngos_result.count if hasattr(ngos_result, 'count') else len(ngos_result.data),
-                "total_campaigns": campaigns_result.count if hasattr(campaigns_result, 'count') else len(campaigns_result.data),
-                "total_donations": float(total_donations),
-                "active_campaigns": active_campaigns
-            }
-        
         elif user["role"] == "ngo":
-            # NGO stats
-            campaigns_result = supabase.table("campaigns").select("*").eq("ngo_id", user["id"]).execute()
-            campaigns = campaigns_result.data if campaigns_result.data else []
-            
-            # Get donations for NGO's campaigns
-            campaign_ids = [c["id"] for c in campaigns]
-            total_donations = 0
-            supporters = set()
+            # NGO sees donations from their campaigns
+            campaigns = supabase.table("campaigns").select("id").eq("ngo_id", user["id"]).execute()
+            campaign_ids = [c["id"] for c in campaigns.data] if campaigns.data else []
             
             if campaign_ids:
-                donations_result = supabase.table("donations").select("amount, user_id").in_("campaign_id", campaign_ids).execute()
-                if donations_result.data:
-                    total_donations = sum(float(d["amount"]) for d in donations_result.data)
-                    supporters = set(d["user_id"] for d in donations_result.data if d.get("user_id"))
-            
-            stats = {
-                "total_users": 0,  # Not applicable for NGO
-                "total_ngos": 0,   # Not applicable for NGO
-                "total_campaigns": len(campaigns),
-                "total_donations": float(total_donations),
-                "active_campaigns": len([c for c in campaigns if c.get("status") == "active"])
-            }
-        
+                donations_result = supabase.table("donations").select("amount").in_("campaign_id", campaign_ids).execute()
+                total_donations = sum(float(d["amount"]) for d in donations_result.data) if donations_result.data else 0.0
+                
         else:  # user
-            # User stats
-            donations_result = supabase.table("donations").select("*").eq("user_id", user["id"]).execute()
-            donations = donations_result.data if donations_result.data else []
-            
-            total_amount = sum(float(d["amount"]) for d in donations) if donations else 0
-            
-            stats = {
-                "total_users": 0,  # Not applicable for user
-                "total_ngos": 0,   # Not applicable for user
-                "total_campaigns": 0,  # Not applicable for user
-                "total_donations": float(total_amount),
-                "active_campaigns": 0  # Not applicable for user
-            }
+            # User sees their own donations
+            donations_result = supabase.table("donations").select("amount").eq("user_id", user["id"]).execute()
+            total_donations = sum(float(d["amount"]) for d in donations_result.data) if donations_result.data else 0.0
         
-        # Get recent donations and format them as DonationResponse objects
+        # Get recent donations (last 5)
         recent_donations = []
         try:
             donations_query = supabase.table("donations").select(
@@ -101,7 +74,7 @@ async def get_dashboard_stats(user: dict = Depends(get_current_user)):
         except Exception as e:
             print(f"Error fetching recent donations: {e}")
         
-        # Get recent campaigns and format them as CampaignResponse objects
+        # Get recent campaigns (last 5)
         recent_campaigns = []
         try:
             campaigns_query = supabase.table("campaigns").select(
@@ -127,25 +100,27 @@ async def get_dashboard_stats(user: dict = Depends(get_current_user)):
         except Exception as e:
             print(f"Error fetching recent campaigns: {e}")
         
-        # Create and return DashboardStats object
+        # Create DashboardStats with ALL required fields
         dashboard_stats = DashboardStats(
-            total_donations=stats.get("total_donations", 0),
-            total_campaigns=stats.get("total_campaigns", 0),
-            total_ngos=stats.get("total_ngos", 0),
-            total_users=stats.get("total_users", 0),
-            active_campaigns=stats.get("active_campaigns", 0),
+            total_donations=float(total_donations),
+            total_campaigns=total_campaigns,
+            total_ngos=total_ngos,
+            total_users=total_users,
+            active_campaigns=active_campaigns,
             recent_donations=recent_donations,
             recent_campaigns=recent_campaigns
         )
         
+        print(f"✅ Dashboard stats prepared for {user['role']}")
         return dashboard_stats
         
     except Exception as e:
         print(f"❌ Error in get_dashboard_stats: {str(e)}")
         print(traceback.format_exc())
-        # Return default stats instead of crashing
+        
+        # Return default stats in case of error (never crash)
         return DashboardStats(
-            total_donations=0,
+            total_donations=0.0,
             total_campaigns=0,
             total_ngos=0,
             total_users=0,
@@ -175,6 +150,7 @@ async def get_notifications(user: dict = Depends(get_current_user)):
                 )
                 notifications.append(notification)
         
+        print(f"✅ Found {len(notifications)} notifications")
         return notifications
         
     except Exception as e:
