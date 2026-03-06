@@ -1,28 +1,32 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from routes import auth, campaigns, donations, users
-
-app = FastAPI(title="HopeShare API", version="1.0.0")
-
-# CORS configuration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5500", "http://127.0.0.1:5500", "https://your-frontend.vercel.app"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Include routers
-app.include_router(auth.router)
-app.include_router(campaigns.router)
-app.include_router(donations.router)
-app.include_router(users.router)
-
-@app.get("/")
-async def root():
-    return {"message": "Welcome to HopeShare API", "version": "1.0.0"}
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
+@app.get("/test-db")
+async def test_database():
+    """Test database connection"""
+    try:
+        if supabase is None:
+            return {
+                "status": "error",
+                "message": "Supabase client not initialized",
+                "suggestion": "Check SUPABASE_URL and SUPABASE_KEY environment variables"
+            }
+        
+        # Try to query the users table
+        result = supabase.table("users").select("*").limit(5).execute()
+        
+        # Try to query campaigns
+        campaigns = supabase.table("campaigns").select("*").limit(5).execute()
+        
+        return {
+            "status": "success",
+            "message": "✅ Database connection successful",
+            "users_count": len(result.data),
+            "users_sample": result.data,
+            "campaigns_count": len(campaigns.data),
+            "campaigns_sample": campaigns.data,
+            "database_url_configured": bool(os.getenv("DATABASE_URL"))
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"❌ Database connection failed: {str(e)}",
+            "error_type": type(e).__name__
+        }
