@@ -1,14 +1,22 @@
+# Core Framework
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 python-multipart==0.0.6
 pydantic==2.5.0
 pydantic-settings==2.1.0
-anyio==3.7.1
+anyio>=3.7.1,<4.0.0
 email-validator==2.1.0
 typing-extensions==4.8.0
-supabase>=2.0.3
-postgrest>=0.10.0
-httpx==0.24.1
+
+# Supabase - Use specific compatible versions
+supabase==2.0.3
+postgrest==0.10.0
+gotrue==1.0.2
+realtime==1.0.0
+storage3==0.6.0
+httpx>=0.24.1,<0.25.0
+
+# Authentication
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 python-dotenv==1.0.0
