@@ -10,10 +10,16 @@ app = FastAPI(title="Donation Management API")
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://donation-management5.vercel.app",  # Your Vercel frontend
+        "http://localhost:5500",                     # Local development
+        "http://127.0.0.1:5500",                      # Local development
+        "https://donationmanagement-backend-2.onrender.com"  # Backend itself
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allows all methods (GET, POST, PUT, DELETE, etc.)
+    allow_headers=["*"],  # Allows all headers
+    expose_headers=["*"],  # Exposes all headers
 )
 
 # Include routers
