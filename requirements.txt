@@ -1,11 +1,25 @@
+# Core Framework
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-supabase==2.0.3
-python-dotenv==1.0.0
+python-multipart==0.0.6
+pydantic==2.5.0
+pydantic-settings==2.1.0
+anyio>=3.7.1,<4.0.0
+email-validator==2.1.0
+typing-extensions==4.8.0
+
+# Database & Supabase
+supabase>=2.0.3
+postgrest>=0.10.0
+httpx>=0.24.1  # Changed from 0.25.0 to 0.24.1 for compatibility
+
+# Authentication & Security
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-python-multipart==0.0.6
-httpx==0.24.1
-pydantic==2.5.0
-pydantic-core==2.14.1
-typing-extensions==4.8.0
+python-dotenv==1.0.0
+
+# Database driver (if using direct PostgreSQL)
+psycopg2-binary==2.9.9
+
+# CORS (if needed)
+# fastapi-cors==0.0.6  # Not needed separately - FastAPI has built-in CORS
