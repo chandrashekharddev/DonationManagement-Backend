@@ -11,7 +11,7 @@ app = FastAPI(title="Donation Management API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://donation-management5.vercel.app",  # Your Vercel frontend
+        "https://donation-management6.vercel.app",  # Your Vercel frontend
         "http://localhost:5500",                     # Local development
         "http://127.0.0.1:5500",                      # Local development
         "https://donationmanagement-backend-2.onrender.com"  # Backend itself
