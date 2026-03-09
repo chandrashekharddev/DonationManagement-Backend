@@ -127,6 +127,39 @@ async def get_campaign(campaign_id: str):
         print(f"Error fetching campaign: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.put("/{campaign_id}/activate")
+async def activate_campaign(
+    campaign_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Activate a campaign (NGO only)"""
+    try:
+        if current_user["role"] != "ngo":
+            raise HTTPException(status_code=403, detail="Only NGOs can activate campaigns")
+        
+        # Verify ownership
+        campaign = supabase.table("campaigns").select("*")\
+            .eq("id", campaign_id).execute()
+        
+        if not campaign.data:
+            raise HTTPException(status_code=404, detail="Campaign not found")
+        
+        if campaign.data[0]["ngo_id"] != current_user["id"]:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        
+        # Update status to active
+        result = supabase.table("campaigns").update({"status": "active"})\
+            .eq("id", campaign_id).execute()
+        
+        return {
+            "message": "Campaign activated successfully",
+            "campaign": result.data[0]
+        }
+        
+    except Exception as e:
+        print(f"Error activating campaign: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+        
 @router.put("/{campaign_id}")
 async def update_campaign(
     campaign_id: str,
