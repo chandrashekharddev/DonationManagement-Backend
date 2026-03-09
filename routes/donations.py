@@ -32,6 +32,9 @@ async def create_money_donation(
         
         result = supabase.table("donations").insert(donation_data).execute()
         
+        if not result.data:
+            raise HTTPException(status_code=400, detail="Failed to create donation")
+        
         # Update campaign raised amount
         campaign = supabase.table("campaigns").select("raised_amount")\
             .eq("id", campaign_id).execute()
@@ -43,8 +46,11 @@ async def create_money_donation(
         
         return {"message": "Donation successful", "data": result.data[0]}
         
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error creating money donation: {e}")
+        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/items")
@@ -67,48 +73,58 @@ async def create_item_donation(
             "campaign_id": campaign_id,
             "donation_type": "items",
             "items": items,
+            "amount": 0,  # Add amount field
             "status": "pending" if delivery_method == "pickup" else "completed",
             "donated_at": datetime.utcnow().isoformat()
         }
         
         donation_result = supabase.table("donations").insert(donation_data).execute()
+        
+        if not donation_result.data:
+            raise HTTPException(status_code=400, detail="Failed to create donation")
+            
         donation_id = donation_result.data[0]["id"]
         
-        # Create item donation records
-        for item in items:
-            item_data = {
-                "user_id": current_user["id"],
-                "campaign_id": campaign_id,
-                "donation_id": donation_id,
-                "item_name": item["name"],
-                "quantity": item["quantity"],
-                "unit": item["unit"],
-                "condition": item.get("condition", "new"),
-                "delivery_method": delivery_method,
-                "pickup_address": pickup_address if delivery_method == "pickup" else None,
-                "status": "pending" if delivery_method == "pickup" else "delivered",
-                "notes": notes,
-                "created_at": datetime.utcnow().isoformat()
-            }
-            
-            supabase.table("item_donations").insert(item_data).execute()
-            
-            # Update campaign collected items
-            campaign = supabase.table("campaigns").select("collected_items")\
-                .eq("id", campaign_id).execute()
-            
-            if campaign.data:
-                collected = campaign.data[0].get("collected_items", [])
+        # Check if item_donations table exists, if not, just update campaign
+        try:
+            # Create item donation records
+            for item in items:
+                item_data = {
+                    "user_id": current_user["id"],
+                    "campaign_id": campaign_id,
+                    "donation_id": donation_id,
+                    "item_name": item["name"],
+                    "quantity": item["quantity"],
+                    "unit": item.get("unit", "pieces"),
+                    "condition": item.get("condition", "new"),
+                    "delivery_method": delivery_method,
+                    "pickup_address": pickup_address if delivery_method == "pickup" else None,
+                    "status": "pending" if delivery_method == "pickup" else "delivered",
+                    "notes": notes,
+                    "created_at": datetime.utcnow().isoformat()
+                }
+                
+                supabase.table("item_donations").insert(item_data).execute()
+        except Exception as e:
+            print(f"Note: item_donations table might not exist yet: {e}")
+        
+        # Update campaign collected items
+        campaign = supabase.table("campaigns").select("collected_items")\
+            .eq("id", campaign_id).execute()
+        
+        if campaign.data:
+            collected = campaign.data[0].get("collected_items", [])
+            for item in items:
                 collected.append({
                     "item_name": item["name"],
                     "quantity": item["quantity"],
-                    "unit": item["unit"],
+                    "unit": item.get("unit", "pieces"),
                     "donated_by": current_user["id"],
                     "donated_at": datetime.utcnow().isoformat()
                 })
-                
-                supabase.table("campaigns").update({"collected_items": collected})\
-                    .eq("id", campaign_id).execute()
+            
+            supabase.table("campaigns").update({"collected_items": collected})\
+                .eq("id", campaign_id).execute()
         
         message = "Donation recorded successfully"
         if delivery_method == "pickup":
@@ -116,29 +132,49 @@ async def create_item_donation(
         
         return {"message": message, "donation_id": donation_id}
         
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error creating item donation: {e}")
+        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/user")
 async def get_user_donations(current_user: dict = Depends(get_current_user)):
     """Get user's donation history"""
     try:
-        # Get money donations
-        money_donations = supabase.table("donations").select(
-            "*, campaigns(title)"
-        ).eq("user_id", current_user["id"]).eq("donation_type", "money")\
-        .order("donated_at", desc=True).execute()
+        # Get money donations - FIX: Remove joins, fetch separately
+        money_result = supabase.table("donations").select("*")\
+            .eq("user_id", current_user["id"])\
+            .eq("donation_type", "money")\
+            .order("donated_at", desc=True).execute()
+        
+        money_donations = []
+        for d in money_result.data or []:
+            # Get campaign title separately
+            campaign = supabase.table("campaigns").select("title")\
+                .eq("id", d["campaign_id"]).execute()
+            d["campaigns"] = {"title": campaign.data[0]["title"] if campaign.data else "Unknown"}
+            money_donations.append(d)
         
         # Get item donations
-        item_donations = supabase.table("item_donations").select(
-            "*, campaigns(title)"
-        ).eq("user_id", current_user["id"])\
-        .order("created_at", desc=True).execute()
+        try:
+            item_result = supabase.table("item_donations").select("*")\
+                .eq("user_id", current_user["id"])\
+                .order("created_at", desc=True).execute()
+            
+            item_donations = []
+            for d in item_result.data or []:
+                campaign = supabase.table("campaigns").select("title")\
+                    .eq("id", d["campaign_id"]).execute()
+                d["campaigns"] = {"title": campaign.data[0]["title"] if campaign.data else "Unknown"}
+                item_donations.append(d)
+        except:
+            item_donations = []
         
         return {
-            "money_donations": money_donations.data,
-            "item_donations": item_donations.data
+            "money_donations": money_donations,
+            "item_donations": item_donations
         }
         
     except Exception as e:
@@ -166,23 +202,48 @@ async def get_campaign_donations(
         result = {}
         
         if not donation_type or donation_type == "money":
-            money = supabase.table("donations").select(
-                "*, users(full_name, email, phone)"
-            ).eq("campaign_id", campaign_id).eq("donation_type", "money")\
-            .order("donated_at", desc=True).execute()
-            result["money_donations"] = money.data
+            money = supabase.table("donations").select("*")\
+                .eq("campaign_id", campaign_id)\
+                .eq("donation_type", "money")\
+                .order("donated_at", desc=True).execute()
+            
+            # Add user details manually
+            money_donations = []
+            for d in money.data or []:
+                user = supabase.table("users").select("full_name, email, phone")\
+                    .eq("id", d["user_id"]).execute()
+                if user.data:
+                    d["users"] = user.data[0]
+                money_donations.append(d)
+            
+            result["money_donations"] = money_donations
         
         if not donation_type or donation_type == "items":
-            items = supabase.table("item_donations").select(
-                "*, users(full_name, phone, address)"
-            ).eq("campaign_id", campaign_id)\
-            .order("created_at", desc=True).execute()
-            result["item_donations"] = items.data
+            try:
+                items = supabase.table("item_donations").select("*")\
+                    .eq("campaign_id", campaign_id)\
+                    .order("created_at", desc=True).execute()
+                
+                # Add user details manually
+                item_donations = []
+                for d in items.data or []:
+                    user = supabase.table("users").select("full_name, phone, address")\
+                        .eq("id", d["user_id"]).execute()
+                    if user.data:
+                        d["users"] = user.data[0]
+                    item_donations.append(d)
+                
+                result["item_donations"] = item_donations
+            except:
+                result["item_donations"] = []
         
         return result
         
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error fetching campaign donations: {e}")
+        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/item/{item_donation_id}/status")
@@ -202,8 +263,14 @@ async def update_item_donation_status(
         result = supabase.table("item_donations").update(update_data)\
             .eq("id", item_donation_id).execute()
         
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Item donation not found")
+        
         return {"message": f"Status updated to {status}", "data": result.data[0]}
         
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error updating donation status: {e}")
+        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
