@@ -53,7 +53,7 @@ class NGO(BaseModel):
     website: Optional[str] = None
     verified: bool = False
 
-# Required Item Schema for Campaign
+# Required Item Schema for Campaign (keep for future use)
 class RequiredItem(BaseModel):
     item_name: str
     description: Optional[str] = None
@@ -62,24 +62,25 @@ class RequiredItem(BaseModel):
     unit: str  # e.g., "pieces", "kg", "liters", "boxes"
     is_urgent: bool = False
 
-# Campaign Model
+# Campaign Model - FIXED: Made all new fields optional with defaults
 class Campaign(BaseModel):
     id: Optional[str] = None
-    ngo_id: str
+    ngo_id: Optional[str] = None  # Make optional as it will be set from current_user
     title: str
     description: Optional[str] = None
     category: str
-    campaign_type: str = "both"  # "money", "items", or "both"
-    goal_amount: Optional[float] = 0  # For monetary goals
+    # Make all new fields optional with defaults to prevent validation errors
+    campaign_type: Optional[str] = "both"  # Made optional
+    goal_amount: float = 0  # Keep as required but with default
     raised_amount: float = 0
-    required_items: Optional[List[RequiredItem]] = None  # List of items needed
-    collected_items: Optional[List[dict]] = None  # Items collected so far
+    required_items: Optional[List[RequiredItem]] = None  # Already optional
+    collected_items: Optional[List[dict]] = None  # Already optional
     start_date: Optional[date] = None
     end_date: Optional[date] = None
-    status: str = "pending"  # "pending", "active", "completed", "cancelled"
+    status: str = "pending"
     image_url: Optional[str] = None
-    pickup_required: bool = False  # Whether items need pickup
-    pickup_address: Optional[str] = None
+    pickup_required: Optional[bool] = False  # Made optional
+    pickup_address: Optional[str] = None  # Already optional
     created_at: Optional[datetime] = None
 
 # Campaign Response (with NGO details)
@@ -90,13 +91,13 @@ class CampaignResponse(BaseModel):
     title: str
     description: Optional[str] = None
     category: str
-    campaign_type: str
+    campaign_type: Optional[str] = "both"  # Made optional
     goal_amount: float
     raised_amount: float
     required_items: Optional[List[RequiredItem]] = None
     status: str
     image_url: Optional[str] = None
-    pickup_required: bool
+    pickup_required: Optional[bool] = False  # Made optional
     pickup_address: Optional[str] = None
     created_at: Optional[datetime] = None
 
@@ -105,41 +106,41 @@ class ItemDonation(BaseModel):
     id: Optional[str] = None
     user_id: str
     campaign_id: str
-    donation_id: Optional[str] = None  # Reference to main donation
+    donation_id: Optional[str] = None
     item_name: str
     quantity: int
     unit: str
-    condition: str = "new"  # "new", "gently_used", "used"
-    delivery_method: str = "pickup"  # "pickup", "dropoff"
+    condition: str = "new"
+    delivery_method: str = "pickup"
     pickup_address: Optional[str] = None
     pickup_date: Optional[datetime] = None
-    volunteer_id: Optional[str] = None  # Assigned volunteer
-    status: str = "pending"  # "pending", "scheduled", "picked_up", "delivered", "cancelled"
+    volunteer_id: Optional[str] = None
+    status: str = "pending"
     notes: Optional[str] = None
     created_at: Optional[datetime] = None
 
-# Donation Model (supports both money and items)
+# Donation Model
 class Donation(BaseModel):
     id: Optional[str] = None
     user_id: str
     campaign_id: str
-    donation_type: str = "money"  # "money" or "items"
-    amount: Optional[float] = 0  # For monetary donations
-    items: Optional[List[dict]] = None  # For item donations
+    donation_type: Optional[str] = "money"  # Made optional
+    amount: float = 0
+    items: Optional[List[dict]] = None
     payment_method: Optional[str] = None
     transaction_id: Optional[str] = None
     status: str = "completed"
     donated_at: Optional[datetime] = None
 
-# Donation Response (with user and campaign details)
+# Donation Response
 class DonationResponse(BaseModel):
     id: str
     user_id: str
     user_name: Optional[str] = None
     campaign_id: str
     campaign_title: Optional[str] = None
-    donation_type: str
-    amount: Optional[float] = 0
+    donation_type: Optional[str] = "money"  # Made optional
+    amount: float = 0
     items: Optional[List[dict]] = None
     status: str
     donated_at: Optional[datetime] = None
@@ -149,7 +150,7 @@ class Volunteer(BaseModel):
     id: Optional[str] = None
     user_id: str
     ngo_id: str
-    status: str = "active"  # "active", "inactive", "busy"
+    status: str = "active"
     available_areas: List[str] = []
     max_pickups_per_day: int = 5
     current_pickups: int = 0
@@ -164,7 +165,7 @@ class PickupAssignment(BaseModel):
     pickup_address: str
     donor_phone: str
     donor_name: Optional[str] = None
-    status: str = "assigned"  # "assigned", "in_progress", "completed", "failed"
+    status: str = "assigned"
     completed_at: Optional[datetime] = None
     notes: Optional[str] = None
 
@@ -174,7 +175,7 @@ class Notification(BaseModel):
     user_id: str
     title: str
     message: Optional[str] = None
-    type: str  # "donation", "campaign", "pickup", "system"
+    type: str
     read: bool = False
     created_at: Optional[datetime] = None
 
@@ -194,8 +195,8 @@ class DashboardStats(BaseModel):
     total_ngos: int
     total_users: int
     active_campaigns: int
-    recent_donations: List[dict]  # List of donation objects
-    recent_campaigns: List[dict]   # List of campaign objects
+    recent_donations: List[dict]
+    recent_campaigns: List[dict]
 
 # Password Change Model
 class PasswordChange(BaseModel):
