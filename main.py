@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from database import supabase  # Import the client from database.py
-from routes import auth, users, campaigns, donations
+from database import supabase
+from routes import auth, users, campaigns, donations, volunteers  # Add volunteers
 from datetime import datetime
 import os
 
@@ -11,15 +11,15 @@ app = FastAPI(title="Donation Management API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://donation-management6.vercel.app",  # Your Vercel frontend
-        "http://localhost:5500",                     # Local development
-        "http://127.0.0.1:5500",                      # Local development
-        "https://donationmanagement-backend-2.onrender.com"  # Backend itself
+        "https://donation-management6.vercel.app",
+        "http://localhost:5500",
+        "http://127.0.0.1:5500",
+        "https://donationmanagement-backend-2.onrender.com"
     ],
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods (GET, POST, PUT, DELETE, etc.)
-    allow_headers=["*"],  # Allows all headers
-    expose_headers=["*"],  # Exposes all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Include routers
@@ -27,52 +27,17 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(campaigns.router)
 app.include_router(donations.router)
+app.include_router(volunteers.router)  # Add volunteer routes
 
 @app.get("/")
 async def root():
     return {
         "message": "Donation Management API",
         "status": "running",
+        "version": "2.0",
+        "features": ["money_donations", "item_donations", "volunteer_management"],
         "database_configured": supabase is not None
     }
-
-@app.get("/test-db")
-async def test_database():
-    """Test database connection"""
-    try:
-        if supabase is None:
-            return {
-                "status": "error",
-                "message": "❌ Supabase client not initialized",
-                "suggestion": "Check SUPABASE_URL and SUPABASE_KEY environment variables in Render",
-                "env_vars_set": {
-                    "SUPABASE_URL": bool(os.getenv("SUPABASE_URL")),
-                    "SUPABASE_KEY": bool(os.getenv("SUPABASE_KEY")),
-                }
-            }
-        
-        # Test basic connection
-        print("Testing Supabase connection...")
-        
-        # Try to query the users table
-        result = supabase.table("users").select("*").limit(5).execute()
-        
-        return {
-            "status": "success",
-            "message": "✅ Database connection successful",
-            "timestamp": str(datetime.now()),
-            "data": result.data
-        }
-    except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        print(f"Database test error: {error_details}")
-        
-        return {
-            "status": "error",
-            "message": f"❌ Database connection failed: {str(e)}",
-            "error_type": type(e).__name__
-        }
 
 @app.get("/health")
 async def health_check():
@@ -86,10 +51,8 @@ async def health_check():
         }
     }
     
-    # Check database
     try:
         if supabase:
-            # Simple query to check database
             result = supabase.table("users").select("id").limit(1).execute()
             health_status["services"]["database"] = "up"
         else:
