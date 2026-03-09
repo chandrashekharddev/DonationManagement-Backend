@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List
 from schemas import UserResponse, DonationResponse, CampaignResponse, NotificationResponse, DashboardStats
-from auth import get_current_user, get_current_user_optional  # Import both
+from auth import get_current_user
 from database import supabase
 from datetime import datetime
 import traceback
@@ -19,7 +19,7 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
     try:
         print(f"Fetching dashboard for user: {current_user['username']} with role: {current_user['role']}")
         
-        # Get global stats
+        # Get global stats - FIXED: Remove joins, fetch separately
         users_result = supabase.table("users").select("*", count="exact").execute()
         ngos_result = supabase.table("users").select("*", count="exact").eq("role", "ngo").execute()
         campaigns_result = supabase.table("campaigns").select("*", count="exact").execute()
@@ -48,21 +48,34 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
             donations_result = supabase.table("donations").select("amount").eq("user_id", current_user["id"]).execute()
             total_donations = sum(float(d["amount"]) for d in donations_result.data) if donations_result.data else 0.0
         
-        # Get recent donations with proper formatting
+        # Get recent donations - FIXED: Remove joins, fetch separately
         recent_donations = []
         try:
-            donations_query = supabase.table("donations").select(
-                "*, users!donations_user_id(full_name), campaigns!donations_campaign_id(title)"
-            ).order("donated_at", desc=True).limit(5).execute()
+            # Fetch recent donations
+            donations_query = supabase.table("donations").select("*").order("donated_at", desc=True).limit(5).execute()
             
             if donations_query.data:
                 for d in donations_query.data:
+                    # Fetch user name separately
+                    user_name = "Anonymous"
+                    if d.get("user_id"):
+                        user = supabase.table("users").select("full_name").eq("id", d["user_id"]).execute()
+                        if user.data:
+                            user_name = user.data[0]["full_name"]
+                    
+                    # Fetch campaign title separately
+                    campaign_title = "Campaign"
+                    if d.get("campaign_id"):
+                        campaign = supabase.table("campaigns").select("title").eq("id", d["campaign_id"]).execute()
+                        if campaign.data:
+                            campaign_title = campaign.data[0]["title"]
+                    
                     donation = {
                         "id": d.get("id", ""),
                         "user_id": d.get("user_id", ""),
-                        "user_name": d.get("users", {}).get("full_name") if d.get("users") else None,
+                        "user_name": user_name,
                         "campaign_id": d.get("campaign_id", ""),
-                        "campaign_title": d.get("campaigns", {}).get("title") if d.get("campaigns") else None,
+                        "campaign_title": campaign_title,
                         "amount": float(d.get("amount", 0)),
                         "status": d.get("status", "completed"),
                         "donated_at": d.get("donated_at")
@@ -71,19 +84,25 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
         except Exception as e:
             print(f"Error fetching recent donations: {e}")
         
-        # Get recent campaigns with proper formatting
+        # Get recent campaigns - FIXED: Remove joins, fetch separately
         recent_campaigns = []
         try:
-            campaigns_query = supabase.table("campaigns").select(
-                "*, users!campaigns_ngo_id(full_name)"
-            ).order("created_at", desc=True).limit(5).execute()
+            # Fetch recent campaigns
+            campaigns_query = supabase.table("campaigns").select("*").order("created_at", desc=True).limit(5).execute()
             
             if campaigns_query.data:
                 for c in campaigns_query.data:
+                    # Fetch NGO name separately
+                    ngo_name = "NGO"
+                    if c.get("ngo_id"):
+                        ngo = supabase.table("users").select("full_name").eq("id", c["ngo_id"]).execute()
+                        if ngo.data:
+                            ngo_name = ngo.data[0]["full_name"]
+                    
                     campaign = {
                         "id": c.get("id", ""),
                         "ngo_id": c.get("ngo_id", ""),
-                        "ngo_name": c.get("users", {}).get("full_name") if c.get("users") else None,
+                        "ngo_name": ngo_name,
                         "title": c.get("title", ""),
                         "description": c.get("description"),
                         "category": c.get("category", "Other"),
@@ -97,7 +116,7 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
         except Exception as e:
             print(f"Error fetching recent campaigns: {e}")
         
-        # Create DashboardStats with ALL required fields
+        # Create DashboardStats
         dashboard_stats = {
             "total_donations": float(total_donations),
             "total_campaigns": total_campaigns,
@@ -114,7 +133,6 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         print(f"❌ Error in get_dashboard_stats: {str(e)}")
         print(traceback.format_exc())
-        # Return default stats in case of error
         return {
             "total_donations": 0.0,
             "total_campaigns": 0,
@@ -131,7 +149,9 @@ async def get_notifications(current_user: dict = Depends(get_current_user)):
     try:
         print(f"Fetching notifications for user: {current_user['id']}")
         
-        result = supabase.table("notifications").select("*").eq("user_id", current_user["id"]).order("created_at", desc=True).execute()
+        result = supabase.table("notifications").select("*")\
+            .eq("user_id", current_user["id"])\
+            .order("created_at", desc=True).execute()
         
         notifications = []
         if result.data:
@@ -157,7 +177,9 @@ async def get_notifications(current_user: dict = Depends(get_current_user)):
 async def mark_notification_read(notification_id: str, current_user: dict = Depends(get_current_user)):
     """Mark notification as read"""
     try:
-        supabase.table("notifications").update({"read": True}).eq("id", notification_id).eq("user_id", current_user["id"]).execute()
+        supabase.table("notifications").update({"read": True})\
+            .eq("id", notification_id)\
+            .eq("user_id", current_user["id"]).execute()
         return {"message": "Notification marked as read"}
     except Exception as e:
         print(f"❌ Error marking notification as read: {str(e)}")
