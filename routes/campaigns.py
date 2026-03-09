@@ -46,9 +46,8 @@ async def get_campaigns(
 ):
     """Get campaigns with filters"""
     try:
-        query = supabase.table("campaigns").select(
-            "*, users!campaigns_ngo_id(full_name, phone, email)"
-        )
+        # FIX: Remove the join that's causing the error
+        query = supabase.table("campaigns").select("*")
         
         if status:
             query = query.eq("status", status)
@@ -59,10 +58,22 @@ async def get_campaigns(
         
         result = query.order("created_at", desc=True).execute()
         
-        return result.data
+        # Manually add NGO names
+        campaigns = result.data if result.data else []
+        for campaign in campaigns:
+            # Get NGO details
+            ngo = supabase.table("users").select("full_name, phone, email")\
+                .eq("id", campaign["ngo_id"]).execute()
+            if ngo.data:
+                campaign["ngo_name"] = ngo.data[0]["full_name"]
+                campaign["ngo_phone"] = ngo.data[0].get("phone")
+                campaign["ngo_email"] = ngo.data[0].get("email")
+        
+        return campaigns
         
     except Exception as e:
         print(f"Error fetching campaigns: {e}")
+        print(traceback.format_exc())
         return []
 
 @router.get("/ngo/{ngo_id}")
@@ -73,7 +84,16 @@ async def get_ngo_campaigns(ngo_id: str):
             .eq("ngo_id", ngo_id)\
             .order("created_at", desc=True).execute()
         
-        return result.data
+        campaigns = result.data if result.data else []
+        
+        # Add NGO name
+        ngo = supabase.table("users").select("full_name").eq("id", ngo_id).execute()
+        ngo_name = ngo.data[0]["full_name"] if ngo.data else "NGO"
+        
+        for campaign in campaigns:
+            campaign["ngo_name"] = ngo_name
+        
+        return campaigns
         
     except Exception as e:
         print(f"Error fetching NGO campaigns: {e}")
@@ -83,14 +103,25 @@ async def get_ngo_campaigns(ngo_id: str):
 async def get_campaign(campaign_id: str):
     """Get single campaign details"""
     try:
-        result = supabase.table("campaigns").select(
-            "*, users!campaigns_ngo_id(full_name, phone, email, address)"
-        ).eq("id", campaign_id).execute()
+        # FIX: Remove the join
+        result = supabase.table("campaigns").select("*")\
+            .eq("id", campaign_id).execute()
         
         if not result.data:
             raise HTTPException(status_code=404, detail="Campaign not found")
         
-        return result.data[0]
+        campaign = result.data[0]
+        
+        # Add NGO details
+        ngo = supabase.table("users").select("full_name, phone, email, address")\
+            .eq("id", campaign["ngo_id"]).execute()
+        if ngo.data:
+            campaign["ngo_name"] = ngo.data[0]["full_name"]
+            campaign["ngo_phone"] = ngo.data[0].get("phone")
+            campaign["ngo_email"] = ngo.data[0].get("email")
+            campaign["ngo_address"] = ngo.data[0].get("address")
+        
+        return campaign
         
     except Exception as e:
         print(f"Error fetching campaign: {e}")
@@ -122,3 +153,24 @@ async def update_campaign(
     except Exception as e:
         print(f"Error updating campaign: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# Add a test endpoint to check campaigns
+@router.get("/test/all")
+async def test_all_campaigns():
+    """Test endpoint to see all campaigns"""
+    try:
+        # Get all campaigns
+        result = supabase.table("campaigns").select("*").execute()
+        
+        # Get counts by status
+        active = supabase.table("campaigns").select("*", count="exact").eq("status", "active").execute()
+        pending = supabase.table("campaigns").select("*", count="exact").eq("status", "pending").execute()
+        
+        return {
+            "total_campaigns": len(result.data) if result.data else 0,
+            "active_campaigns": active.count if hasattr(active, 'count') else len(active.data),
+            "pending_campaigns": pending.count if hasattr(pending, 'count') else len(pending.data),
+            "campaigns": result.data
+        }
+    except Exception as e:
+        return {"error": str(e), "traceback": traceback.format_exc()}
