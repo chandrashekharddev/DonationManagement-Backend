@@ -15,6 +15,22 @@ async def create_campaign(campaign: Campaign, current_user: dict = Depends(get_c
         if current_user["role"] != "ngo":
             raise HTTPException(status_code=403, detail="Only NGOs can create campaigns")
         
+        # Convert RequiredItem objects to dictionaries
+        required_items_dict = []
+        if campaign.required_items:
+            for item in campaign.required_items:
+                if hasattr(item, 'dict'):  # Pydantic v2
+                    required_items_dict.append(item.dict())
+                else:  # Pydantic v1 or manual dict conversion
+                    required_items_dict.append({
+                        "item_name": item.item_name,
+                        "description": item.description,
+                        "quantity_needed": item.quantity_needed,
+                        "quantity_collected": item.quantity_collected,
+                        "unit": item.unit,
+                        "is_urgent": item.is_urgent
+                    })
+        
         campaign_data = {
             "ngo_id": current_user["id"],
             "title": campaign.title,
@@ -22,7 +38,7 @@ async def create_campaign(campaign: Campaign, current_user: dict = Depends(get_c
             "category": campaign.category,
             "campaign_type": campaign.campaign_type,
             "goal_amount": campaign.goal_amount or 0,
-            "required_items": campaign.required_items or [],
+            "required_items": required_items_dict,  # Use converted dict, not objects
             "collected_items": [],
             "pickup_required": campaign.pickup_required,
             "pickup_address": campaign.pickup_address,
@@ -37,18 +53,8 @@ async def create_campaign(campaign: Campaign, current_user: dict = Depends(get_c
         if not result.data:
             raise HTTPException(status_code=400, detail="Failed to create campaign")
         
-        # Get the created campaign with NGO name
-        created_campaign = result.data[0]
+        return result.data[0]
         
-        # Add NGO name
-        ngo = supabase.table("users").select("full_name").eq("id", current_user["id"]).execute()
-        if ngo.data:
-            created_campaign["ngo_name"] = ngo.data[0]["full_name"]
-        
-        return created_campaign
-        
-    except HTTPException:
-        raise
     except Exception as e:
         print(f"Error creating campaign: {e}")
         print(traceback.format_exc())
