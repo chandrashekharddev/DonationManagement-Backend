@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, List
 
 class User(BaseModel):
     id: Optional[str] = None
@@ -22,18 +22,31 @@ class NGO(BaseModel):
     website: Optional[str] = None
     verified: bool = False
 
+# Required Item Schema for Campaign
+class RequiredItem(BaseModel):
+    item_name: str
+    quantity_needed: int
+    quantity_collected: int = 0
+    unit: str
+    is_urgent: bool = False
+
 class Campaign(BaseModel):
     id: Optional[str] = None
-    ngo_id: str
+    ngo_id: Optional[str] = None  # Make optional as it will be set from current_user
     title: str
     description: Optional[str] = None
     category: str
-    goal_amount: float
+    campaign_type: str = "both"  # "money", "items", or "both"
+    goal_amount: Optional[float] = 0
     raised_amount: float = 0
+    required_items: Optional[List[RequiredItem]] = None
+    collected_items: Optional[List[dict]] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     status: str = "pending"
     image_url: Optional[str] = None
+    pickup_required: bool = False
+    pickup_address: Optional[str] = None
     created_at: Optional[datetime] = None
 
 class Donation(BaseModel):
