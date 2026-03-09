@@ -30,22 +30,22 @@ async def login(login_data: UserLogin):
             expires_delta=access_token_expires
         )
         
-        # Ensure all required fields are present
-        user_response = UserResponse(
-            id=user["id"],
-            username=user["username"],
-            email=user.get("email", ""),
-            full_name=user.get("full_name", ""),
-            role=user["role"],
-            phone=user.get("phone"),
-            address=user.get("address"),
-            created_at=user.get("created_at")
-        )
+        # FIX: Convert to dictionary, NOT UserResponse object
+        user_dict = {
+            "id": user["id"],
+            "username": user["username"],
+            "email": user.get("email", ""),
+            "full_name": user.get("full_name", ""),
+            "role": user["role"],
+            "phone": user.get("phone"),
+            "address": user.get("address"),
+            "created_at": str(user.get("created_at")) if user.get("created_at") else None
+        }
         
         return {
             "access_token": access_token,
             "token_type": "bearer",
-            "user": user_response
+            "user": user_dict  # Return dictionary, not UserResponse
         }
         
     except HTTPException:
@@ -73,12 +73,10 @@ async def register(user: UserCreate):
         if existing_email.data:
             raise HTTPException(status_code=400, detail="Email already registered")
         
-        # In production, hash password: user.password = get_password_hash(user.password)
-        
         # Create user
         user_data = {
             "username": user.username,
-            "password": user.password,
+            "password": user.password,  # In production, hash this: get_password_hash(user.password)
             "email": user.email,
             "full_name": user.full_name,
             "role": user.role,
@@ -106,7 +104,7 @@ async def register(user: UserCreate):
             except Exception as e:
                 print(f"⚠️ Error creating NGO record: {e}")
         
-        # Return user data
+        # Return UserResponse object (this is fine for registration)
         return UserResponse(
             id=new_user["id"],
             username=new_user["username"],
