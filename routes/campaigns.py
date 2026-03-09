@@ -30,6 +30,8 @@ async def create_campaign(campaign: Campaign, current_user: dict = Depends(get_c
             "created_at": datetime.utcnow().isoformat()
         }
         
+        print(f"Creating campaign with data: {campaign_data}")
+        
         result = supabase.table("campaigns").insert(campaign_data).execute()
         
         if not result.data:
@@ -63,13 +65,13 @@ async def get_campaigns(
         # Build query
         query = supabase.table("campaigns").select("*")
         
-        # Apply filters
-        if status:
-            query = query.eq("status", status)
-        if category:
-            query = query.eq("category", category)
-        if campaign_type:
-            query = query.eq("campaign_type", campaign_type)
+        # Apply filters only if they are provided and not empty
+        if status and status.strip():
+            query = query.eq("status", status.strip())
+        if category and category.strip():
+            query = query.eq("category", category.strip())
+        if campaign_type and campaign_type.strip():
+            query = query.eq("campaign_type", campaign_type.strip())
         
         # Execute query
         result = query.order("created_at", desc=True).execute()
@@ -97,7 +99,50 @@ async def get_campaigns(
     except Exception as e:
         print(f"Error fetching campaigns: {e}")
         print(traceback.format_exc())
-        return []
+        return []  # Return empty array instead of throwing error
+
+@router.get("/debug/status/{status_value}")
+async def debug_status_filter(status_value: str):
+    """Debug endpoint to test status filtering"""
+    try:
+        # Test 1: Get all campaigns
+        all_result = supabase.table("campaigns").select("*").execute()
+        
+        # Test 2: Get campaigns with status filter
+        filtered_result = supabase.table("campaigns").select("*").eq("status", status_value).execute()
+        
+        # Add NGO names to all campaigns for better debugging
+        all_campaigns = all_result.data if all_result.data else []
+        filtered_campaigns = filtered_result.data if filtered_result.data else []
+        
+        for campaign in all_campaigns:
+            try:
+                ngo = supabase.table("users").select("full_name").eq("id", campaign["ngo_id"]).execute()
+                if ngo.data:
+                    campaign["ngo_name"] = ngo.data[0]["full_name"]
+            except:
+                campaign["ngo_name"] = "Unknown"
+        
+        for campaign in filtered_campaigns:
+            try:
+                ngo = supabase.table("users").select("full_name").eq("id", campaign["ngo_id"]).execute()
+                if ngo.data:
+                    campaign["ngo_name"] = ngo.data[0]["full_name"]
+            except:
+                campaign["ngo_name"] = "Unknown"
+        
+        return {
+            "total_campaigns": len(all_campaigns),
+            f"campaigns_with_status_{status_value}": len(filtered_campaigns),
+            "all_campaigns": all_campaigns,
+            "filtered_campaigns": filtered_campaigns,
+            "status_used": status_value
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
 
 @router.get("/ngo/{ngo_id}")
 async def get_ngo_campaigns(ngo_id: str):
